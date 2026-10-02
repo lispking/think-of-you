@@ -121,3 +121,7 @@ lua tests/mock_think.lua
   （Mini 固件 3.0.2 及以上满足）。
 - 响应体默认上限 8KB，脚本放宽到 12KB；主题闲置一周以上会清空历史，
   首次可用 `since=1m` 兜底。
+
+## 许可证
+
+本项目采用 [MIT](LICENSE) 许可证。
