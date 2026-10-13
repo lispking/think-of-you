@@ -90,6 +90,18 @@ think-of-you.lua
 
 > 源码只存在设备内存里，**重启后要重新烧录**；`storage` 里的数据会保留。
 
+### 本地调试想更快
+
+设备只能轮询，所以响应延迟就是**对方的轮询间隔**。自建一个本地中继可以把间隔压到
+几百毫秒，也不受公共实例限速影响：
+
+```sh
+./ntfy-local.sh            # Docker 起官方 ntfy，打印要填进的地址
+./ntfy-local.sh --flash    # 顺手生成指向本机的副本并烧录两台
+```
+
+其它提速办法与原理见 [docs/testing.md](docs/testing.md) 与 [docs/protocol.md](docs/protocol.md)。
+
 ## 配置
 
 脚本顶部集中了所有可调项：
@@ -113,6 +125,7 @@ think-of-you.lua
 ```
 think-of-you.lua   应用本体。设备端只能跑一个 .lua（没有 require / io），所以是单文件
 flash.sh           一键烧两台：注入主题、按 transport_id 分发、烧完回读校验
+ntfy-local.sh      本地 ntfy 中继（Docker）：调试时把两台指向本机，响应压到几百毫秒
 assets/            README 用的界面截图（模拟器渲染）
 docs/              协议、设计取舍、硬件限制、验证方法
 tests/             打桩契约测试 + 真实 API 探针
