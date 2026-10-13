@@ -20,8 +20,16 @@ jobs:
       - name: 应用语法检查
         run: lua5.4 -e "assert(loadfile('think-of-you.lua'))"
 
-      - name: 烧录脚本语法检查
-        run: bash -n flash.sh
+      - name: 脚本语法与写法检查
+        run: |
+          bash -n flash.sh
+          bash -n ntfy-local.sh
+          # 变量名不能紧跟非 ASCII 字符：在 C.UTF-8 下会被并进变量名，
+          # 配合 set -u 直接 unbound variable 退出（中文注释多的脚本很容易踩）
+          if grep -nE '\$[A-Za-z_][A-Za-z0-9_]*[^ -~]' flash.sh ntfy-local.sh; then
+            echo '上面的写法请改成 ${VAR} 形式' >&2
+            exit 1
+          fi
 
       - name: 跑打桩契约测试
         run: lua5.4 tests/mock_think.lua
