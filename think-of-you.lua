@@ -29,7 +29,8 @@ local TOPIC = "lingclaw-think-CHANGE-ME-8f3a" -- ntfy 主题；两台相同，�
 local NT    = "https://ntfy.sh/"
 
 local POLL_MS          = 10000 -- 空闲时的轮询间隔
-local POLL_BUSY_MS     = 2000  -- 对局或合奏期间的密集轮询
+local POLL_BUSY_MS     = 2000  -- 密集轮询：对局、合奏，或刚有来往时
+local ACTIVE_WINDOW_MS = 15000 -- 收到消息后这么久内算"还在聊"，保持密集轮询
 local SEND_COOLDOWN_MS = 1200  -- 两次发送之间的最小间隔
 local TTS_COOLDOWN_MS  = 2000  -- 两次播报之间的最小间隔
 local SAVE_INTERVAL_MS = 11000 -- 存档写入节流（平台最短 10s）
@@ -92,6 +93,7 @@ local last_save = -1e9
 local send_id, poll_id        -- 在途请求 id
 local uploading, polling = false, false
 local next_poll = 0
+local active_until = 0 -- "还在聊"到什么时候：期间用密集轮询
 
 local speaking = false
 local speech_id
@@ -119,6 +121,15 @@ local song  -- { part = {...}, start_at = 换算到本机运行时刻的开场�
 local match -- { state = "choose"|"wait", mine = n, theirs = n, until_ms = ... }
 
 local draw, flash -- 前向声明：下面几节里才定义
+
+-- 把下一次轮询提前：对局、合奏，或刚收到消息时用，
+-- 别等满一个空闲周期才去收信
+local function hurry_poll()
+    local soon = uptime_ms + POLL_BUSY_MS
+    if next_poll > soon then
+        next_poll = soon
+    end
+end
 
 ------------------------------------------------------------------
 -- 自过滤：认「消息」，不认「设备」
@@ -450,6 +461,9 @@ local function received(say)
     feed(GROW_FEED_GOT)
     led.on("status")
     led_until = uptime_ms + 1500
+    -- 有人说话就说明可能还在聊：这段时间把轮询加密，好让来回更快
+    active_until = uptime_ms + ACTIVE_WINDOW_MS
+    hurry_poll()
     if say then
         speak(say)
     end
@@ -470,14 +484,6 @@ local function can_send()
     end
     last_send = uptime_ms
     return true
-end
-
--- 进入对局或合奏时，别等满一个空闲周期才去收信
-local function hurry_poll()
-    local soon = uptime_ms + POLL_BUSY_MS
-    if next_poll > soon then
-        next_poll = soon
-    end
 end
 
 local function send_whisper(n)
@@ -885,8 +891,8 @@ function on_tick(dt_ms)
     end
 
     if not uploading and not polling and uptime_ms >= next_poll then
-        -- 对局或合奏期间把轮询加快，闲下来再退回去
-        local busy = (match ~= nil) or (song ~= nil)
+        -- 对局、合奏，或刚有来往：把轮询加快，之后自己退回去
+        local busy = (match ~= nil) or (song ~= nil) or (uptime_ms < active_until)
         next_poll = uptime_ms + (busy and POLL_BUSY_MS or POLL_MS)
         poll()
     end

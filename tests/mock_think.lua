@@ -734,6 +734,18 @@ advance(500)
 local idle_wait = poll_interval()
 ok(idle_wait >= 9000, "闲着时应按 10 秒轮询，实际 " .. idle_wait .. "ms")
 
+-- 刚收到消息：进入"还在聊"，轮询应加密，且下一次立刻被提前
+next_poll_batch(line("peer-act", 1790909000, "5A5A5A5A", "w|1"))
+local active_wait = poll_interval()
+ok(active_wait > 0 and active_wait <= 2600,
+    "刚收到消息后应密集轮询，实际 " .. active_wait .. "ms")
+finish_speech()
+
+-- 窗口过后应自己退回空闲节奏
+advance(16000)
+local calm_wait = poll_interval()
+ok(calm_wait >= 9000, "过了活跃窗口应退回 10 秒级，实际 " .. calm_wait .. "ms")
+
 tap(5)
 flush_post()
 local busy_wait = poll_interval()
