@@ -1,13 +1,11 @@
 # 想你机 · think-of-you
 #
 # 主体是一个纯 Lua 应用（think-of-you.lua），没有编译产物。
-# 另有 video/ 目录，存放宣传片的离线生成脚本（Python + ffmpeg）。
 #
 # 关键原则：
 #   1. 绝不能用 `*.lua` 之类的模式，否则会连应用本体一起忽略。
 #      需要忽略的 Lua 只有编译器输出（*.luac）和本机私密副本。
-#   2. video/ 里的帧序列、音频、成品视频都是体积巨大且可再生的产物，
-#      一律忽略；但生成它们的脚本（*.py、字幕 md）必须保留。
+#   2. 真实 TOPIC 相当于密码，只写在被忽略的本机副本里，应用本体保持占位值。
 
 # ────────────────────────────────
 # 操作系统
@@ -99,7 +97,7 @@ screenshot*.png
 
 # ────────────────────────────────
 # Python 工具链
-# video/ 下的脚本用 Python 跑，这里屏蔽解释器与工具缓存。
+# 屏蔽解释器与工具缓存；以后若有脚本改用 Python，直接沿用这一段。
 # ────────────────────────────────
 __pycache__/
 *.py[cod]
@@ -117,31 +115,3 @@ ENV/
 *.egg-info/
 dist/
 build/
-
-# ────────────────────────────────
-# 宣传片工程 · video/
-# 除脚本和字幕文档外，其余全部是本地生成的产物：
-#   audio/     —— 合成语音、BGM、混音（可重跑 make_audio.py 得到）
-#   frames/    —— 900 张 PNG 帧序列（约 1.7G）
-#   out/       —— 渲染完成的分辨率成片（mp4）
-#   preview/   —— 抽帧预览图
-# 这些都能靠 render.py / make_audio.py 重新生成，不进版本库。
-# ────────────────────────────────
-video/audio/
-video/frames/
-video/out/
-video/preview/
-
-# 生成过程中的中间件（若脚本以后输出到别处也一并挡住）
-video/*.wav
-video/*.aiff
-video/*.mp3
-video/*.m4a
-video/*.mp4
-video/*.mov
-video/*.mkv
-
-# 只有视频根目录的脚本与字幕文档需要保留，其余仍被上面规则忽略。
-!video/*.py
-!video/*.md
-!video/requirements*.txt
