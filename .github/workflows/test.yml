@@ -9,8 +9,9 @@ jobs:
   contract:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
+      # 设备跑的就是 Lua 5.4：这是兼容目标，不是要追新的依赖
       - name: 安装 Lua 5.4
         run: |
           sudo apt-get update

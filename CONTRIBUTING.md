@@ -6,7 +6,7 @@
 
 | 想做什么 | 需要什么 |
 | --- | --- |
-| 跑契约测试 | 标准 **Lua 5.4**（不需要任何第三方库） |
+| 跑契约测试 | 标准 **Lua 5.4**（设备运行环境，不需要任何第三方库） |
 | 在电脑上看效果 | [LingClaw-SDK](https://github.com/LISTENAI/LingClaw-SDK) 的桌面模拟器 |
 | 烧到真机 | Android Platform Tools（`adb`）+ 一台支持 ADB 调试的 Mini |
 
