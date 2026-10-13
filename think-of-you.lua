@@ -9,17 +9,16 @@
 -- 设备只能主动轮询、无法被动接收推送，所以两台设备通过公共中继 ntfy.sh
 -- 交换信号：发送即 POST 到主题，接收即每 POLL_MS 拉取一次新消息。
 --
--- 配对（两台设备都要做）：
---   1. 两台设备使用同一个 TOPIC（改成难猜的字符串，主题名即密码）。
---   2. 两台设备的 KEY 必须不同，用它区分「自己」和「对方」。
---   3. 分别上传：adb push think-of-you.lua /miniapp/think-of-you.lua
---   4. 在对方设备上也打开/上传同一份、改掉 KEY 即可。
+-- 配对：两台设备跑完全相同的这一份脚本，只要求同一个 TOPIC，
+-- 不需要「本机身份」——自己的回显靠每条消息的随机 token 认出来。
+--   1. 用 flash.sh 注入难猜的 TOPIC，两台一起烧：
+--        ./flash.sh --topic lingclaw-think-xxxxxxxx
+--   2. 手工烧同一份也行：adb push think-of-you.lua /miniapp/think-of-you.lua
 
 ------------------------------------------------------------------
 -- 配置
 ------------------------------------------------------------------
 local TOPIC = "lingclaw-think-CHANGE-ME-8f3a" -- ntfy 主题；两台相同，务必改掉
-local KEY   = "A1B2C3D4"                      -- 本机标识；两台不同
 local NT    = "https://ntfy.sh/"
 
 local POLL_MS           = 10000 -- 轮询间隔
@@ -60,6 +59,38 @@ local booted = false -- 第一次 tick 属于启动阶段，期间禁止播报
 local led_until   = 0
 local flash_until = 0
 local flash_msg   = ""
+
+------------------------------------------------------------------
+-- 自过滤：认「消息」，不认「设备」
+------------------------------------------------------------------
+-- ntfy 会把自己发的那条也回送给自己，必须滤掉，否则会自己对自己播报。
+-- 这里不设本机身份：发送前生成一个随机 token 放进 Title 头（Title 不显示在
+-- 界面上），收到消息时看 Title 是不是自己最近发过的，是就当成回显丢弃。
+local OWN_KEEP   = 16   -- 记住最近多少条自己的 token；一个轮询周期内发不了这么多
+local own_tokens = {}   -- 环形缓冲，槽位 0..OWN_KEEP-1
+local own_seq    = 0
+
+local function new_token()
+    -- 32 位十六进制，只需在自己最近发出的消息里不重复
+    return string.format("%08X", math.random(0, 4294967295))
+end
+
+local function remember_own(tok)
+    own_tokens[own_seq % OWN_KEEP] = tok
+    own_seq = own_seq + 1
+end
+
+local function is_own(title)
+    if type(title) ~= "string" then
+        return false
+    end
+    for i = 0, OWN_KEEP - 1 do
+        if own_tokens[i] == title then
+            return true
+        end
+    end
+    return false
+end
 
 ------------------------------------------------------------------
 -- 存档
@@ -125,7 +156,7 @@ local function draw()
         screen.text("按下，就有人在想你", 12, 176, 0x9AA7B8)
     end
 
-    screen.text("配对 " .. KEY, 12, 204, 0x6C7A8C)
+    screen.text("主题 …" .. string.sub(TOPIC, -4), 12, 204, 0x6C7A8C)
     screen.present()
 end
 
@@ -153,10 +184,13 @@ local function send()
     end
     last_press = uptime_ms
 
+    local tok = new_token()
+    remember_own(tok)
+
     send_id = http.request({
         url = NT .. TOPIC,
         method = "POST",
-        headers = { ["Title"] = KEY },
+        headers = { ["Title"] = tok },
         body = pick_whisper(),
         timeout_ms = 8000,
         max_response_bytes = 1024,
@@ -212,7 +246,7 @@ local function process(body)
                 if type(m.time) == "number" and m.time + 1 > last_time then
                     last_time = math.floor(m.time) + 1
                 end
-                if type(m.title) ~= "string" or m.title ~= KEY then
+                if not is_own(m.title) then
                     on_peer(m.message)
                 end
             end

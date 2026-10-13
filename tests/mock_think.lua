@@ -229,7 +229,6 @@ end
 ------------------------------------------------------------------
 -- 驱动
 ------------------------------------------------------------------
-local KEY = io.open(APP):read("a"):match('local KEY%s*=%s*"([^"]+)"')
 local TOPIC = io.open(APP):read("a"):match('local TOPIC%s*=%s*"([^"]+)"')
 
 local function boot()
@@ -258,6 +257,14 @@ local function deliver(id, response)
     on_http_response(id, response)
 end
 
+-- 模拟播报结束：运行器用 on_tts_result 释放播报槽，不释放就再也播不出下一条
+local function finish_speech()
+    if tts_open then
+        tts_open = false
+        on_tts_result(tts_seq, { status = "completed" })
+    end
+end
+
 local function line(id, t, title, message)
     return string.format('{"id":"%s","time":%d,"event":"message","topic":"%s","title":"%s","message":"%s"}',
         id, t, TOPIC, title, message)
@@ -265,7 +272,7 @@ end
 
 print("== 想你机 打桩验证 ==")
 print("应用: " .. APP)
-print("TOPIC=" .. TOPIC .. "  KEY=" .. KEY)
+print("TOPIC=" .. TOPIC)
 
 -- 1. 启动与轮询
 print("\n[1] 启动、首帧、轮询调度")
@@ -276,25 +283,25 @@ ok(poll_id ~= nil, "首次 tick 后应发起轮询")
 ok(poll_opts and poll_opts.url:find("since=1m") ~= nil, "首次轮询使用 since=1m")
 ok(poll_opts and poll_opts.url:find("^https://ntfy%.sh/") == 1, "轮询走 ntfy")
 
--- 2. 收到对端消息 → 声音 + 灯 + 播报；自己的消息应被过滤
-print("\n[2] 轮询响应：自过滤与对端播报")
+-- 2. 收到对端消息 → 声音 + 灯 + 播报
+print("\n[2] 轮询响应：对端播报")
 local buzzer_before = #calls.buzzer
 local led_before = calls.led.on
 deliver(poll_id, {
     status = 200,
     content_type = "application/x-ndjson",
-    body = line("self-1", 1790900010, KEY, "mine") .. "\n"
-        .. line("peer-1", 1790900011, "other-device", "hello future"),
+    body = line("peer-1", 1790900011, "8A31F0C2", "hello future"),
 })
-ok(#calls.tts == 1, "应恰好播报 1 次（自己的消息被过滤）")
+ok(#calls.tts == 1, "收到对端消息应恰好播报 1 次")
 ok(calls.tts[1] == "hello future", "播报内容应为对端消息")
 ok(calls.led.on > led_before, "收到消息后状态灯常亮")
 ok(#calls.buzzer == buzzer_before + 2, "收到消息应响两声")
+finish_speech()
 
 -- 3. 游标推进，下次轮询使用 peer-1 的时间 +1
 print("\n[3] 游标推进")
 on_tick(10001) -- 跨过一个轮询间隔
-local _, next_opts = first_request("poll")
+local next_poll_id, next_opts = first_request("poll")
 ok(next_opts and next_opts.url:find("since=1790900012") ~= nil,
     "轮询游标应为 last_time+1，实际 " .. tostring(next_opts and next_opts.url))
 
@@ -310,7 +317,9 @@ on_button_click("function")
 local post_id, post_opts = first_request("post")
 ok(post_id ~= nil, "按键应发起 POST")
 ok(post_opts and post_opts.url == "https://ntfy.sh/" .. TOPIC, "POST 到同一主题")
-ok(post_opts and post_opts.headers and post_opts.headers["Title"] == KEY, "POST 携带本机 KEY")
+local SELF_TOKEN = post_opts and post_opts.headers and post_opts.headers["Title"]
+ok(type(SELF_TOKEN) == "string" and SELF_TOKEN:match("^%x%x%x%x%x%x%x%x$") ~= nil,
+    "POST 的 Title 应为本条消息的 8 位随机 token，实际 " .. tostring(SELF_TOKEN))
 ok(post_opts and #post_opts.body > 0, "POST 携带一句话")
 
 -- 6. 连点冷却
@@ -327,8 +336,27 @@ print("\n[7] 发送失败回滚")
 deliver(post_id, { error = { code = "network_error", message = "x" } })
 ok(true, "失败回调不崩溃")
 
--- 8. 存档恢复：预置游标后重新启动，轮询应沿用
-print("\n[8] 存档恢复")
+-- 8. 自己的回显必须被 token 过滤：同一批里混进自己刚发的那条
+print("\n[8] 回显自过滤（token）")
+local tts_before_echo = #calls.tts
+deliver(next_poll_id, {
+    status = 200,
+    content_type = "application/x-ndjson",
+    body = line("self-echo", 1790900020, SELF_TOKEN, "mine") .. "\n"
+        .. line("peer-2", 1790900021, "1E4B77A9", "peer after echo"),
+})
+ok(#calls.tts == tts_before_echo + 1, "自己的回显应被过滤，只播报对端那条")
+ok(calls.tts[#calls.tts] == "peer after echo", "播报内容应为对端消息")
+finish_speech()
+
+-- 游标必须跨过自己的回显，否则每次轮询都会把自己的话再说一遍
+on_tick(10001)
+local _, after_echo = first_request("poll")
+ok(after_echo and after_echo.url:find("since=1790900022") ~= nil,
+    "游标应跨过自己的回显，实际 " .. tostring(after_echo and after_echo.url))
+
+-- 9. 存档恢复：预置游标后重新启动，轮询应沿用
+print("\n[9] 存档恢复")
 reset_mocks()
 store = { s = 7, t = 1700000000, i = "old-id" }
 dofile(APP)
@@ -339,8 +367,8 @@ local _, restored = first_request("poll")
 ok(restored and restored.url:find("since=1700000000") ~= nil,
     "恢复的游标应生效，实际 " .. tostring(restored and restored.url))
 
--- 9. 存档写入合法
-print("\n[9] 存档约束")
+-- 10. 存档写入合法
+print("\n[10] 存档约束")
 ok(#calls.saves >= 0, "存档写入通过契约校验")
 
 print(string.format("\n== 结果: %d 通过, %d 失败 ==", pass, fail))
