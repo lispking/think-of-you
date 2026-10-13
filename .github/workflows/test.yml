@@ -1,0 +1,26 @@
+name: 契约测试
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Lua 5.4
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lua5.4
+
+      - name: 应用语法检查
+        run: lua5.4 -e "assert(loadfile('think-of-you.lua'))"
+
+      - name: 烧录脚本语法检查
+        run: bash -n flash.sh
+
+      - name: 跑打桩契约测试
+        run: lua5.4 tests/mock_think.lua
